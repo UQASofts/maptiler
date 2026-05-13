@@ -1,0 +1,42 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Node / build artifacts
+node_modules
+.next
+out
+build
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Docker / CI
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Misc
+README.md
+CLAUDE.md
+AGENTS.md
+.vercel
+
+# Env files — must NOT enter the image. Runtime vars are injected by the
+# orchestrator (docker-compose env_file). Build-time vars come in via ARGs.
+.env
+.env.*
+

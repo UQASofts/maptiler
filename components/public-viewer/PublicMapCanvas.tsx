@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Map as MapTilerMap, MapStyle, config, Popup } from "@maptiler/sdk";
+import {
+  Map as MapTilerMap,
+  MapStyle,
+  config,
+  Popup,
+  getWebGLSupportError,
+} from "@maptiler/sdk";
 import "@maptiler/sdk/dist/maptiler-sdk.css";
+import { WebGLUnsupportedNotice } from "@/components/map/WebGLUnsupportedNotice";
 import { fetchCityBoundary } from "@/lib/maptiler/geocoding";
 import { fitToBoundary } from "@/lib/maptiler/layers";
 import { fetchLocations } from "@/lib/actions";
@@ -30,8 +37,17 @@ export function PublicMapCanvas({
     "streets",
   );
   const [mapReady, setMapReady] = useState(false);
+  const [mapInitError, setMapInitError] = useState<string | null>(null);
+  /** `undefined` = not checked yet (browser only), `null` = WebGL2 OK, string = unsupported */
+  const [webglSupportError, setWebglSupportError] = useState<string | null | undefined>(
+    undefined,
+  );
   const popupRef = useRef<Popup | null>(null);
   const prevSelectedIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setWebglSupportError(getWebGLSupportError());
+  }, []);
 
   // Set API key once
   useEffect(() => {
@@ -61,15 +77,27 @@ export function PublicMapCanvas({
 
   // Initialize map
   useEffect(() => {
+    if (webglSupportError !== null || mapInitError) return;
     if (!containerRef.current || mapRef.current) return;
 
-    const map = new MapTilerMap({
-      container: containerRef.current,
-      style: baseStyle === "satellite" ? MapStyle.SATELLITE : "https://api.maptiler.com/maps/base-v4/style.json",
-      center: [10.2, 52.75],
-      zoom: 9,
-      hash: false,
-    });
+    let map: MapTilerMap;
+    try {
+      map = new MapTilerMap({
+        container: containerRef.current,
+        style:
+          baseStyle === "satellite"
+            ? MapStyle.SATELLITE
+            : "https://api.maptiler.com/maps/base-v4/style.json",
+        center: [10.2, 52.75],
+        zoom: 9,
+        hash: false,
+      });
+    } catch (e) {
+      setMapInitError(
+        e instanceof Error ? e.message : "The map failed to initialize.",
+      );
+      return;
+    }
 
     mapRef.current = map;
 
@@ -230,7 +258,7 @@ export function PublicMapCanvas({
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [baseStyle]);
+  }, [baseStyle, webglSupportError, mapInitError]);
 
   // Handle drawing all routes and zooming to selected location
   useEffect(() => {
@@ -479,6 +507,25 @@ export function PublicMapCanvas({
 
     loadData();
   }, [locations, selectedLocationId, activeFilter, clearRoutes, mapReady]);
+
+  if (webglSupportError === undefined) {
+    return (
+      <div
+        className="absolute inset-0 h-full w-full animate-pulse bg-zinc-100"
+        aria-busy
+        aria-label="Checking map support"
+      />
+    );
+  }
+
+  const mapBlockedMessage = webglSupportError ?? mapInitError;
+  if (mapBlockedMessage) {
+    return (
+      <div className="absolute inset-0 h-full w-full">
+        <WebGLUnsupportedNotice message={mapBlockedMessage} />
+      </div>
+    );
+  }
 
   return (
     <div className="absolute inset-0 h-full w-full">

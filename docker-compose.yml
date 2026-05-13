@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_c2tpbGxlZC1nbGlkZXItNzEuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in"
+        NEXT_PUBLIC_CLERK_SIGN_UP_URL: "/sign-up"
+        NEXT_PUBLIC_MAPTILER_API_KEY: "N7najBrzuhDsVvu9RZZv"
+        NEXT_PUBLIC_MAPTILER_GEO_KEY: "N7najBrzuhDsVvu9RZZv"
+    image: northrail-planner:latest
+    container_name: northrail-planner
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      DATABASE_URL: "postgresql://neondb_owner:npg_43WobrKuwYUs@ep-super-bread-aoc4wmnd-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+      CLERK_SECRET_KEY: "sk_test_8ksA2zFChvk8mdAvmk6g3pCtt1ScxHL3B2uOSXnTKg"
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_c2tpbGxlZC1nbGlkZXItNzEuY2xlcmsuYWNjb3VudHMuZGV2JA"
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in"
+      NEXT_PUBLIC_CLERK_SIGN_UP_URL: "/sign-up"
+      NEXT_PUBLIC_MAPTILER_API_KEY: "N7najBrzuhDsVvu9RZZv"
+      NEXT_PUBLIC_MAPTILER_GEO_KEY: "N7najBrzuhDsVvu9RZZv"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:3005/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
