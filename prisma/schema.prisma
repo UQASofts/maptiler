@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(uuid())
+  clerkId   String   @unique // The ID provided by Clerk
+  email     String   @unique
+  firstName String?
+  lastName  String?
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  name      String
+  type      String
+  notes     String?
+  lat       Float
+  lng       Float
+  iconColor String   @default("#3b82f6")
+  address   String?
+  tags      String[]
+  routes    Route[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Route {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  type        String
+  color       String       @default("#E91E63")
+  lineStyle   String       @default("SOLID")
+  routeType   String       @default("Main Line")
+  status      String       @default("study")
+  locationId  String
+  location    Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  points      RoutePoint[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model RoutePoint {
+  id      String   @id @default(uuid())
+  label   String
+  lat     Float
+  lng     Float
+  notes   String?
+  photos  String[]
+  type    String   @default("single")
+  order   Int
+  routeId String
+  route   Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+}
