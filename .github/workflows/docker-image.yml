@@ -23,6 +23,11 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Use dev environment for build
+        run: |
+          test -f .env.dev || (echo "Missing .env.dev in the repository." && exit 1)
+          cp .env.dev .env
+
       - name: Install dependencies
         run: npm ci
 
