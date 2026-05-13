@@ -1,11 +1,80 @@
-name: Deploy Maptiler planner to server
+name: Build and deploy Maptiler planner to server
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-
-  build:
-
+  build-and-deploy:
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js project
+        run: npm run build
+
+      - name: Create tarball of build output
+        run: |
+          tar -czf maptiler.tar.gz \
+            .next/ \
+            public/ \
+            prisma/ \
+            node_modules/ \
+            package.json \
+            package-lock.json \
+            next.config.ts \
+            prisma.config.ts \
+            ecosystem.config.cjs
+
+      - name: Upload tarball to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT }}
+          source: "maptiler.tar.gz"
+          target: "/var/www/html/maptiler"
+
+      - name: Extract tarball and deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT }}
+          script: |
+            cd /var/www/html/maptiler/
+            tar -xzf maptiler.tar.gz
+            rm maptiler.tar.gz
+
+      - name: Restart maptiler service
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT }}
+          script: |
+            cd /var/www/html/maptiler/
+            export PATH=$PATH:/root/.nvm/versions/node/v20.19.2/bin
+            pm2 stop northrail-planner || echo "PM2 process not found"
+            pm2 delete northrail-planner || echo "PM2 process not found"
+            pm2 start ecosystem.config.cjs
+            pm2 save
