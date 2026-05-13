@@ -45,7 +45,8 @@ jobs:
             package-lock.json \
             next.config.ts \
             prisma.config.ts \
-            ecosystem.config.cjs
+            ecosystem.config.cjs \
+            .env
 
       - name: Upload tarball to server
         uses: appleboy/scp-action@v0.1.7
