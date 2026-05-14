@@ -23,6 +23,8 @@ import {
   removeLocation as removeLocationDb,
   addRoute as addRouteDb,
   removeRoute as removeRouteDb,
+  editRoute as updateRouteDb,
+  editFullRoute as updateFullRouteDb,
 } from "@/lib/actions";
 import { DEFAULT_PLANNER_STATE } from "@/lib/planner/state";
 import type { RouteVariantDef } from "@/lib/planner/types";
@@ -53,6 +55,7 @@ export function PlannerScreen() {
 
   // ── Route state ──────────────────────────────────────────────────────────
   const [draftRoute, setDraftRoute] = useState<RouteState | null>(null);
+  const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
   const [visibleRouteIds, setVisibleRouteIds] = useState<Set<string>>(new Set());
   const [loadedRoutes, setLoadedRoutes] = useState<Record<string, RouteVariantDef>>({});
 
@@ -81,7 +84,7 @@ export function PlannerScreen() {
 
   // ── Active variant for map rendering ─────────────────────────────────────
   const activeVariantsToRender = useMemo<RouteVariantDef[]>(() => {
-    if (view === "create-route" && draftRoute) {
+    if ((view === "create-route" || view === "edit-route") && draftRoute) {
       const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
       draftRoute.points.forEach((p, idx) => {
         features.push({
@@ -103,10 +106,14 @@ export function PlannerScreen() {
             type: "LineString",
             coordinates: draftRoute.points.map((p) => [p.lng, p.lat]),
           },
-          properties: {},
+          properties: {
+            title: draftRoute.name || "Draft Route",
+            description: draftRoute.description,
+            color: draftRoute.color,
+          },
         });
       }
-      return [{
+      const draftVariants: RouteVariantDef[] = [{
         id: "draft-route",
         group: "preferred",
         shortLabel: "DRAFT",
@@ -115,6 +122,14 @@ export function PlannerScreen() {
         lineStyle: draftRoute.lineStyle,
         geojson: { type: "FeatureCollection", features },
       }];
+
+      const out: RouteVariantDef[] = [...draftVariants];
+      for (const routeId of Array.from(visibleRouteIds)) {
+        if (routeId !== editingRouteId && loadedRoutes[routeId]) {
+          out.push(loadedRoutes[routeId]);
+        }
+      }
+      return out;
     }
 
     const out: RouteVariantDef[] = [];
@@ -124,7 +139,7 @@ export function PlannerScreen() {
       }
     }
     return out;
-  }, [view, draftRoute, visibleRouteIds, loadedRoutes]);
+  }, [view, draftRoute, visibleRouteIds, loadedRoutes, editingRouteId]);
 
   // ── Load locations from DB on mount ──────────────────────────────────────
   useEffect(() => {
@@ -190,7 +205,11 @@ export function PlannerScreen() {
               type: "LineString",
               coordinates: dbRoute.points.map((p: { lng: number; lat: number }) => [p.lng, p.lat]),
             },
-            properties: {},
+            properties: {
+              title: dbRoute.name,
+              description: dbRoute.description,
+              color: dbRoute.color,
+            },
           });
         }
         
@@ -306,7 +325,11 @@ export function PlannerScreen() {
               type: "LineString",
               coordinates: newDbRoute.points.map((p: { lng: number; lat: number }) => [p.lng, p.lat]),
             },
-            properties: {},
+            properties: {
+              title: newDbRoute.name,
+              description: newDbRoute.description,
+              color: newDbRoute.color,
+            },
           });
         }
         const variant: RouteVariantDef = {
@@ -334,6 +357,78 @@ export function PlannerScreen() {
       }
     },
     [selectedLocationId],
+  );
+
+  const handleUpdateRouteMetadata = useCallback(
+    async (route: RouteState) => {
+      if (!editingRouteId) return;
+      try {
+        await updateFullRouteDb(editingRouteId, {
+          name: route.name,
+          description: route.description,
+          type: route.type,
+          color: route.color,
+          lineStyle: route.lineStyle,
+          points: route.points.map((p, i) => ({ ...p, order: i })),
+        });
+
+        const dbLocations = await fetchLocations();
+        setLocations(dbLocations.map(mapDbLocation));
+        
+        // update loaded map variants immediately if visible
+        setLoadedRoutes((prev) => {
+          const current = prev[editingRouteId];
+          if (!current) return prev;
+          
+          const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
+          route.points.forEach((p, idx) => {
+            features.push({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+              properties: {
+                label: p.label,
+                notes: p.notes,
+                photos: p.photos ? JSON.stringify(p.photos) : undefined,
+                pointType: (p as any).type || "single",
+                isEndpoint: idx === 0 || idx === route.points.length - 1,
+              },
+            });
+          });
+          if (route.points.length >= 2) {
+            features.push({
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: route.points.map((p) => [p.lng, p.lat]),
+              },
+              properties: {
+                title: route.name,
+                description: route.description,
+                color: route.color,
+              },
+            });
+          }
+          
+          return {
+            ...prev,
+            [editingRouteId]: {
+              ...current,
+              title: route.name,
+              shortLabel: route.name,
+              color: route.color,
+              lineStyle: route.lineStyle,
+              geojson: { type: "FeatureCollection", features },
+            }
+          };
+        });
+        
+        setEditingRouteId(null);
+        setView("routes");
+      } catch (err) {
+        console.error("Failed to update route metadata:", err);
+      }
+    },
+    [editingRouteId],
   );
 
   // ── Issue 2: Toggle route visibility on map ──────────────────────────────
@@ -404,6 +499,32 @@ export function PlannerScreen() {
           onChangeDraftRoute={setDraftRoute}
           draftLat={markerPosition?.lat}
           draftLng={markerPosition?.lng}
+          onEditRoute={async (id) => {
+            const dbRoute = await fetchRoute(id);
+            if (dbRoute) {
+              setEditingRouteId(id);
+              setView("edit-route");
+              setDraftRoute({
+                name: dbRoute.name,
+                description: dbRoute.description || "",
+                type: dbRoute.type,
+                color: dbRoute.color,
+                lineStyle: dbRoute.lineStyle,
+                points: dbRoute.points.map((p: any) => ({
+                  lat: p.lat,
+                  lng: p.lng,
+                  label: p.label,
+                  notes: p.notes || "",
+                  photos: p.photos || [],
+                  type: p.type as "single" | "bulk",
+                })),
+              });
+            }
+          }}
+          onUpdateRoute={handleUpdateRouteMetadata}
+          initialRoute={
+            editingRouteId && view === "edit-route" ? draftRoute || undefined : undefined
+          }
         />
         </div>
 

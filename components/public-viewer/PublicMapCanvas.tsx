@@ -1,19 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import {
-  Map as MapTilerMap,
-  MapStyle,
-  config,
-  Popup,
-  getWebGLSupportError,
-} from "@maptiler/sdk";
+import { Map as MapTilerMap, MapStyle, config, Popup } from "@maptiler/sdk";
 import "@maptiler/sdk/dist/maptiler-sdk.css";
-import { WebGLUnsupportedNotice } from "@/components/map/WebGLUnsupportedNotice";
 import { fetchCityBoundary } from "@/lib/maptiler/geocoding";
 import { fitToBoundary } from "@/lib/maptiler/layers";
 import { fetchLocations } from "@/lib/actions";
 import { PublicPointPopup } from "./PublicPointPopup";
+import { RoutePopup } from "../planner/MapCanvas/RoutePopup";
 import { createRoot } from "react-dom/client";
 
 const API_KEY = process.env.NEXT_PUBLIC_MAPTILER_API_KEY || "";
@@ -37,17 +31,9 @@ export function PublicMapCanvas({
     "streets",
   );
   const [mapReady, setMapReady] = useState(false);
-  const [mapInitError, setMapInitError] = useState<string | null>(null);
-  /** `undefined` = not checked yet (browser only), `null` = WebGL2 OK, string = unsupported */
-  const [webglSupportError, setWebglSupportError] = useState<string | null | undefined>(
-    undefined,
-  );
   const popupRef = useRef<Popup | null>(null);
+  const routePopupRef = useRef<Popup | null>(null);
   const prevSelectedIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    setWebglSupportError(getWebGLSupportError());
-  }, []);
 
   // Set API key once
   useEffect(() => {
@@ -77,27 +63,15 @@ export function PublicMapCanvas({
 
   // Initialize map
   useEffect(() => {
-    if (webglSupportError !== null || mapInitError) return;
     if (!containerRef.current || mapRef.current) return;
 
-    let map: MapTilerMap;
-    try {
-      map = new MapTilerMap({
-        container: containerRef.current,
-        style:
-          baseStyle === "satellite"
-            ? MapStyle.SATELLITE
-            : "https://api.maptiler.com/maps/base-v4/style.json",
-        center: [10.2, 52.75],
-        zoom: 9,
-        hash: false,
-      });
-    } catch (e) {
-      setMapInitError(
-        e instanceof Error ? e.message : "The map failed to initialize.",
-      );
-      return;
-    }
+    const map = new MapTilerMap({
+      container: containerRef.current,
+      style: baseStyle === "satellite" ? MapStyle.SATELLITE : "https://api.maptiler.com/maps/base-v4/style.json",
+      center: [10.2, 52.75],
+      zoom: 9,
+      hash: false,
+    });
 
     mapRef.current = map;
 
@@ -216,7 +190,38 @@ export function PublicMapCanvas({
           mapAny.setPaintProperty(casingId, "line-opacity", 1);
         }
         map.getCanvas().style.cursor = "pointer";
+
+        // Show Route Popup
+        if (hitFeature.properties && hitFeature.properties.title) {
+          if (!routePopupRef.current) {
+            const popupNode = document.createElement("div");
+            const root = createRoot(popupNode);
+            root.render(
+              <RoutePopup
+                title={hitFeature.properties.title}
+                description={hitFeature.properties.description}
+                color={hitFeature.properties.color}
+              />
+            );
+            routePopupRef.current = new Popup({
+              closeButton: false,
+              closeOnClick: false,
+              className: "custom-route-popup",
+              offset: 10,
+            })
+              .setLngLat(e.lngLat)
+              .setDOMContent(popupNode)
+              .addTo(map);
+          } else {
+            routePopupRef.current.setLngLat(e.lngLat);
+          }
+        }
         return;
+      }
+
+      if (routePopupRef.current) {
+        routePopupRef.current.remove();
+        routePopupRef.current = null;
       }
 
       // Point / circle cursor styling
@@ -248,6 +253,10 @@ export function PublicMapCanvas({
     const handleMouseLeave = () => {
       resetRouteWidths();
       map.getCanvas().style.cursor = "";
+      if (routePopupRef.current) {
+        routePopupRef.current.remove();
+        routePopupRef.current = null;
+      }
     };
     map.on("mouseleave", handleMouseLeave);
 
@@ -258,7 +267,7 @@ export function PublicMapCanvas({
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [baseStyle, webglSupportError, mapInitError]);
+  }, [baseStyle]);
 
   // Handle drawing all routes and zooming to selected location
   useEffect(() => {
@@ -351,7 +360,13 @@ export function PublicMapCanvas({
                   .sort((a: any, b: any) => a.order - b.order)
                   .map((p: any) => [p.lng, p.lat]),
               },
-              properties: { id: route.id, type: "line" },
+              properties: { 
+                id: route.id, 
+                type: "line",
+                title: route.name,
+                description: route.description,
+                color: route.color || "#0284c7"
+              },
             });
           }
 
@@ -507,25 +522,6 @@ export function PublicMapCanvas({
 
     loadData();
   }, [locations, selectedLocationId, activeFilter, clearRoutes, mapReady]);
-
-  if (webglSupportError === undefined) {
-    return (
-      <div
-        className="absolute inset-0 h-full w-full animate-pulse bg-zinc-100"
-        aria-busy
-        aria-label="Checking map support"
-      />
-    );
-  }
-
-  const mapBlockedMessage = webglSupportError ?? mapInitError;
-  if (mapBlockedMessage) {
-    return (
-      <div className="absolute inset-0 h-full w-full">
-        <WebGLUnsupportedNotice message={mapBlockedMessage} />
-      </div>
-    );
-  }
 
   return (
     <div className="absolute inset-0 h-full w-full">

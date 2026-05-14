@@ -166,3 +166,35 @@ export async function getRoutesByLocationId(locationId: string) {
     },
   });
 }
+
+export async function updateFullRoute(
+  id: string,
+  data: {
+    name: string;
+    description?: string;
+    type: string;
+    color: string;
+    lineStyle: string;
+    points: Array<{ label: string; lat: number; lng: number; notes?: string; photos?: string[]; order: number; type?: "single" | "bulk" }>;
+  }
+) {
+  return prisma.route.update({
+    where: { id },
+    data: {
+      name: data.name,
+      description: data.description,
+      type: data.type,
+      color: data.color,
+      lineStyle: data.lineStyle,
+      points: {
+        deleteMany: {},
+        create: data.points,
+      },
+    },
+    include: {
+      points: {
+        orderBy: { order: "asc" },
+      },
+    },
+  });
+}

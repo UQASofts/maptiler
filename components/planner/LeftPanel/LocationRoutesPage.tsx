@@ -11,6 +11,7 @@ export type LocationRoutesPageProps = {
   onToggleRouteVisibility: (routeId: string) => void;
   visibleRouteIds: Set<string>;
   onDeleteRoute: (routeId: string) => void;
+  onEditRoute: (routeId: string) => void;
 };
 
 function RouteListItem({
@@ -18,16 +19,20 @@ function RouteListItem({
   isVisible,
   onToggleVisibility,
   onDelete,
+  onEdit,
 }: {
   route: Route;
   isVisible: boolean;
   onToggleVisibility: () => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const statusColor = STATUS_COLORS[route.status];
 
   const handleDelete = () => {
-    if (window.confirm(`Delete route "${route.name}"? This cannot be undone.`)) {
+    if (
+      window.confirm(`Delete route "${route.name}"? This cannot be undone.`)
+    ) {
       onDelete();
     }
   };
@@ -39,7 +44,9 @@ function RouteListItem({
         style={{ backgroundColor: statusColor }}
       />
       <div className="min-w-0 flex-1">
-        <h4 className="text-sm sm:text-base font-semibold text-zinc-900">{route.name}</h4>
+        <h4 className="text-sm sm:text-base font-semibold text-zinc-900">
+          {route.name}
+        </h4>
         <p className="text-[10px] sm:text-xs text-zinc-500">
           {route.points} pts · {route.routeType}
         </p>
@@ -54,7 +61,18 @@ function RouteListItem({
             : "text-zinc-400 hover:bg-zinc-50 hover:text-zinc-600"
         }`}
       >
-        <Icon name={isVisible ? "eye" : "eyeOff"} className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        <Icon
+          name={isVisible ? "eye" : "eyeOff"}
+          className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+        />
+      </button>
+      <button
+        type="button"
+        onClick={onEdit}
+        title="Edit route details"
+        className="rounded-lg p-1.5 sm:p-2 text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-zinc-600"
+      >
+        <Icon name="edit" className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
       </button>
       <button
         type="button"
@@ -75,6 +93,7 @@ export function LocationRoutesPage({
   onToggleRouteVisibility,
   visibleRouteIds,
   onDeleteRoute,
+  onEditRoute,
 }: LocationRoutesPageProps) {
   return (
     <div className="flex h-full flex-col bg-zinc-50">
@@ -88,13 +107,17 @@ export function LocationRoutesPage({
           Locations
         </button>
         <span className="text-xs sm:text-sm text-zinc-400">›</span>
-        <span className="text-xs sm:text-sm font-semibold text-[#db2777]">{location.name}</span>
+        <span className="text-xs sm:text-sm font-semibold text-[#db2777]">
+          {location.name}
+        </span>
       </div>
 
       {/* Routes List */}
       <div className="flex-1 space-y-2 sm:space-y-3 overflow-y-auto px-3 sm:px-4 py-3 sm:py-5">
         {location.routes.length === 0 && (
-          <p className="text-center text-xs sm:text-sm text-zinc-400">No routes yet. Create one below.</p>
+          <p className="text-center text-xs sm:text-sm text-zinc-400">
+            No routes yet. Create one below.
+          </p>
         )}
         {location.routes.map((route) => (
           <RouteListItem
@@ -103,6 +126,7 @@ export function LocationRoutesPage({
             isVisible={visibleRouteIds.has(route.id)}
             onToggleVisibility={() => onToggleRouteVisibility(route.id)}
             onDelete={() => onDeleteRoute(route.id)}
+            onEdit={() => onEditRoute(route.id)}
           />
         ))}
       </div>

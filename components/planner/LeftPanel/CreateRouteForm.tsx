@@ -28,14 +28,16 @@ export type CreateRouteFormProps = {
   onPickOnMap?: () => void;
   draftLat?: number;
   draftLng?: number;
+  initialRoute?: RouteState;
+  isEdit?: boolean;
 };
 
 const ROUTE_TYPES = ["HIGH SPEED", "FREIGHT", "COMMUTER", "METRO"] as const;
 const ROUTE_TYPE_COLORS: Record<string, string> = {
   "HIGH SPEED": "#E91E63",
-  "FREIGHT":    "#FF9800",
-  "COMMUTER":   "#2196F3",
-  "METRO":      "#9C27B0",
+  FREIGHT: "#FF9800",
+  COMMUTER: "#2196F3",
+  METRO: "#9C27B0",
 };
 const LINE_STYLES = ["SOLID", "DASHED", "DOTTED", "DASH-DOT"] as const;
 
@@ -83,15 +85,26 @@ function AddPointPanel({
   const [endNotes, setEndNotes] = useState("");
   const [endPhotos, setEndPhotos] = useState<string[]>([]);
 
-  const lastProcessedRef = useRef<{lat: number | null, lng: number | null}>({lat: null, lng: null});
+  const lastProcessedRef = useRef<{ lat: number | null; lng: number | null }>({
+    lat: null,
+    lng: null,
+  });
 
   useEffect(() => {
     if (!isOpen) return;
-    if (draftLat !== undefined && draftLat !== null && draftLng !== undefined && draftLng !== null) {
-      if (lastProcessedRef.current.lat === draftLat && lastProcessedRef.current.lng === draftLng) {
+    if (
+      draftLat !== undefined &&
+      draftLat !== null &&
+      draftLng !== undefined &&
+      draftLng !== null
+    ) {
+      if (
+        lastProcessedRef.current.lat === draftLat &&
+        lastProcessedRef.current.lng === draftLng
+      ) {
         return;
       }
-      
+
       lastProcessedRef.current = { lat: draftLat, lng: draftLng };
 
       if (mode === "single") {
@@ -144,7 +157,12 @@ function AddPointPanel({
           const latNum = parseFloat(parts[0]);
           const lngNum = parseFloat(parts[1]);
           if (!isNaN(latNum) && !isNaN(lngNum)) {
-            newPoints.push({ lat: latNum, lng: lngNum, label: parts[2] || "", type: "bulk" as const });
+            newPoints.push({
+              lat: latNum,
+              lng: lngNum,
+              label: parts[2] || "",
+              type: "bulk" as const,
+            });
           }
         }
       }
@@ -401,7 +419,11 @@ function AddPointPanel({
                       />
                       <button
                         type="button"
-                        onClick={() => setSinglePhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                        onClick={() =>
+                          setSinglePhotos((prev) =>
+                            prev.filter((_, idx) => idx !== i),
+                          )
+                        }
                         className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600"
                       >
                         <Icon name="close" className="h-3 w-3" />
@@ -492,7 +514,11 @@ function AddPointPanel({
                           />
                           <button
                             type="button"
-                            onClick={() => setStartPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                            onClick={() =>
+                              setStartPhotos((prev) =>
+                                prev.filter((_, idx) => idx !== i),
+                              )
+                            }
                             className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600"
                           >
                             <Icon name="close" className="h-3 w-3" />
@@ -558,7 +584,11 @@ function AddPointPanel({
                           />
                           <button
                             type="button"
-                            onClick={() => setEndPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                            onClick={() =>
+                              setEndPhotos((prev) =>
+                                prev.filter((_, idx) => idx !== i),
+                              )
+                            }
                             className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600"
                           >
                             <Icon name="close" className="h-3 w-3" />
@@ -614,12 +644,14 @@ export function CreateRouteForm({
   onPickOnMap,
   draftLat,
   draftLng,
+  initialRoute,
+  isEdit,
 }: CreateRouteFormProps) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [type, setType] = useState("HIGH SPEED");
+  const [name, setName] = useState(initialRoute?.name ?? "");
+  const [description, setDescription] = useState(initialRoute?.description ?? "");
+  const [type, setType] = useState(initialRoute?.type ?? "HIGH SPEED");
   const color = ROUTE_TYPE_COLORS[type] ?? "#E91E63";
-  const [lineStyle, setLineStyle] = useState("SOLID");
+  const [lineStyle, setLineStyle] = useState(initialRoute?.lineStyle ?? "SOLID");
   const [points, setPoints] = useState<
     {
       lat: number;
@@ -629,7 +661,7 @@ export function CreateRouteForm({
       photos?: string[];
       type?: "single" | "bulk";
     }[]
-  >([]);
+  >(initialRoute?.points ?? []);
   const [showAddPointModal, setShowAddPointModal] = useState(false);
 
   useEffect(() => {
@@ -671,13 +703,13 @@ export function CreateRouteForm({
         <span className="text-sm text-zinc-400">›</span>
         <span className="text-sm text-zinc-500">{location.name}</span>
         <span className="text-sm text-zinc-400">›</span>
-        <span className="text-sm font-semibold text-[#db2777]">New Route</span>
+        <span className="text-sm font-semibold text-[#db2777]">{isEdit ? "Edit Route" : "New Route"}</span>
       </div>
 
       {/* Form */}
       <div className="flex-1 overflow-y-auto px-5 py-5">
         <h2 className="text-lg font-semibold text-zinc-900">
-          Create New Route
+          {isEdit ? "Edit Route Details" : "Create New Route"}
         </h2>
         <p className="mb-5 text-sm text-zinc-500">
           Configure transit corridor parameters
@@ -761,8 +793,12 @@ export function CreateRouteForm({
                   className="h-5 w-5 shrink-0 rounded-full shadow-sm ring-1 ring-black/10"
                   style={{ backgroundColor: color }}
                 />
-                <span className="font-mono text-xs font-medium text-zinc-700">{color}</span>
-                <span className="ml-auto text-xs text-zinc-400">Auto-assigned by type</span>
+                <span className="font-mono text-xs font-medium text-zinc-700">
+                  {color}
+                </span>
+                <span className="ml-auto text-xs text-zinc-400">
+                  Auto-assigned by type
+                </span>
               </div>
             </div>
             <div>
@@ -843,7 +879,7 @@ export function CreateRouteForm({
           onClick={handleSave}
           className="flex-1 rounded-xl bg-[#db2777] py-2.5 text-sm font-semibold text-white hover:bg-[#be185d]"
         >
-          SAVE ROUTE
+          {isEdit ? "SAVE CHANGES" : "SAVE ROUTE"}
         </button>
       </div>
 

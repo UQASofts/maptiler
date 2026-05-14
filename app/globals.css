@@ -26,7 +26,8 @@ body {
 }
 
 /* Override MapTiler popup defaults for custom popups */
-.custom-point-popup .maplibregl-popup-content {
+.custom-point-popup .maplibregl-popup-content,
+.custom-route-popup .maplibregl-popup-content {
   background: transparent !important;
   padding: 0 !important;
   border-radius: 0 !important;

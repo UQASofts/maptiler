@@ -6,7 +6,7 @@ import { LocationRoutesPage } from "./LocationRoutesPage";
 import { CreateRouteForm } from "./CreateRouteForm";
 import type { Location, LocationType } from "@/lib/planner/locations";
 
-export type LeftPanelView = "list" | "new-location" | "routes" | "create-route";
+export type LeftPanelView = "list" | "new-location" | "routes" | "create-route" | "edit-route";
 
 export type LeftPanelProps = {
   view: LeftPanelView;
@@ -37,6 +37,9 @@ export type LeftPanelProps = {
   onChangeDraftRoute?: (route: any) => void;
   draftLat?: number;
   draftLng?: number;
+  onEditRoute?: (routeId: string) => void;
+  onUpdateRoute?: (route: any) => void;
+  initialRoute?: any;
 };
 
 export function LeftPanel({
@@ -55,6 +58,9 @@ export function LeftPanel({
   onChangeDraftRoute,
   draftLat,
   draftLng,
+  onEditRoute,
+  onUpdateRoute,
+  initialRoute,
 }: LeftPanelProps) {
   const selectedLocation = locations.find((l) => l.id === selectedLocationId) ?? null;
 
@@ -82,25 +88,32 @@ export function LeftPanel({
           onToggleRouteVisibility={onToggleRouteVisibility ?? (() => {})}
           visibleRouteIds={visibleRouteIds ?? new Set()}
           onDeleteRoute={onDeleteRoute ?? (() => {})}
+          onEditRoute={onEditRoute ?? (() => {})}
         />
       </aside>
     );
   }
 
-  if (view === "create-route" && selectedLocation) {
+  if ((view === "create-route" || view === "edit-route") && selectedLocation) {
     return (
       <aside className="relative flex w-full h-full shrink-0 flex-col bg-white">
         <CreateRouteForm
           location={selectedLocation}
           onBack={() => onChangeView("routes")}
           onSave={(route) => {
-            onSaveRoute?.(route);
+            if (view === "edit-route") {
+              onUpdateRoute?.(route);
+            } else {
+              onSaveRoute?.(route);
+            }
             onChangeView("routes");
           }}
           onChange={onChangeDraftRoute}
           onPickOnMap={onPickOnMap}
           draftLat={draftLat}
           draftLng={draftLng}
+          initialRoute={view === "edit-route" ? initialRoute : undefined}
+          isEdit={view === "edit-route"}
         />
       </aside>
     );

@@ -90,7 +90,7 @@ export async function addRoute(data: {
   color: string;
   lineStyle: string;
   locationId: string;
-  points: Array<{ label: string; lat: number; lng: number; notes?: string; order: number; type?: "single" | "bulk" }>;
+  points: Array<{ label: string; lat: number; lng: number; notes?: string; photos?: string[]; order: number; type?: "single" | "bulk" }>;
 }) {
   // await requireAdmin();
   return createRoute(data);
@@ -113,6 +113,18 @@ export async function editRoute(
 ) {
   // await requireAdmin();
   return updateRoute(id, data);
+}
+
+export async function editFullRoute(id: string, data: {
+  name: string;
+  description?: string;
+  type: string;
+  color: string;
+  lineStyle: string;
+  points: Array<{ label: string; lat: number; lng: number; notes?: string; photos?: string[]; order: number; type?: "single" | "bulk" }>;
+}) {
+  const { updateFullRoute } = await import("@/lib/prisma");
+  return updateFullRoute(id, data);
 }
 
 export async function addRoutePoint(data: {
@@ -162,12 +174,12 @@ export async function uploadRoutePhoto(formData: FormData) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = file.name.split(".").pop() || "jpg";
   const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
-  
+
   const uploadDir = path.join(process.cwd(), "public", "uploads");
   await fs.mkdir(uploadDir, { recursive: true });
-  
+
   const filepath = path.join(uploadDir, filename);
   await fs.writeFile(filepath, buffer);
-  
+
   return `/uploads/${filename}`;
 }

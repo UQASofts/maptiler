@@ -5,6 +5,7 @@ export type RouteStatus = "study" | "alternative" | "construction";
 export type Route = {
   id: string;
   name: string;
+  description?: string;
   points: number;
   routeType: string;
   status: RouteStatus;
@@ -120,6 +121,10 @@ export function mapDbLocation(db: {
   routes: Array<{
     id: string;
     name: string;
+    description: string | null;
+    type: string;
+    color: string;
+    lineStyle: string;
     points: Array<unknown>;
     routeType?: string;
     status?: string;
@@ -141,11 +146,12 @@ export function mapDbLocation(db: {
     routes: db.routes.map((r) => ({
       id: r.id,
       name: r.name,
+      description: r.description ?? undefined,
       points: r.points?.length ?? 0,
-      routeType: r.routeType ?? "Main Line",
+      routeType: r.type,
       status: (r.status ?? "study") as RouteStatus,
-      color: (r as any).color ?? "#E91E63",
-      lineStyle: (r as any).lineStyle ?? "SOLID",
+      color: r.color,
+      lineStyle: r.lineStyle,
     })),
   };
 }
