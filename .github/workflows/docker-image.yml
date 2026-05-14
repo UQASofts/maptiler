@@ -69,6 +69,7 @@ jobs:
             cd /var/www/html/maptiler/
             tar -xzf maptiler.tar.gz
             rm maptiler.tar.gz
+            mkdir -p public/uploads
 
       - name: Restart maptiler service
         uses: appleboy/ssh-action@v1.0.0
