@@ -16,7 +16,7 @@ services:
       - "3005:3005"
     volumes:
       # App writes to public/uploads — mount that subpath only (not all of /app/public).
-      - /var/www/html/maptiler/uploads:/app/public/uploads
+      - /var/www/html/maptiler/public/uploads:/app/public/uploads
     environment:
       DATABASE_URL: "postgresql://neondb_owner:npg_43WobrKuwYUs@ep-super-bread-aoc4wmnd-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
       CLERK_SECRET_KEY: "sk_test_8ksA2zFChvk8mdAvmk6g3pCtt1ScxHL3B2uOSXnTKg"
