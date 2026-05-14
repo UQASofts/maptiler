@@ -139,7 +139,7 @@ function LocationDropdown({
             style={{ top: rect.top + 8, left: Math.max(16, rect.right - 224) }}
             className="fixed z-[100] w-56 rounded-xl border border-zinc-100 bg-white p-1.5 shadow-xl ring-1 ring-black/5"
           >
-            <button
+            {/* <button
               onClick={() => {
                 onSelectLocation("");
                 setOpen(false);
@@ -151,7 +151,7 @@ function LocationDropdown({
               }`}
             >
               All Locations
-            </button>
+            </button> */}
             {locations.map((loc) => (
               <button
                 key={loc.id}
