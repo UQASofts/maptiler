@@ -14,6 +14,8 @@ services:
     restart: unless-stopped
     ports:
       - "3005:3005"
+    volumes:
+      - /var/www/html/maptiler/public:/app/public
     environment:
       DATABASE_URL: "postgresql://neondb_owner:npg_43WobrKuwYUs@ep-super-bread-aoc4wmnd-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
       CLERK_SECRET_KEY: "sk_test_8ksA2zFChvk8mdAvmk6g3pCtt1ScxHL3B2uOSXnTKg"
