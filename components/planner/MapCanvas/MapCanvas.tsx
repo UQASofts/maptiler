@@ -20,6 +20,7 @@ import {
   addOrUpdateRouteLayer,
   addOrUpdateResistanceLayers,
   applyResistanceVisibility,
+  applyRouteLineHover,
   removePlannerLayers,
   fitToRoutes,
   addCityBoundaryLayer,
@@ -171,19 +172,23 @@ export function MapCanvas({
 
     function resetRouteWidths() {
       const mapAny = map as any;
+      const suffixes = ["-casing", "-gap", "-hit", "-points", "-labels"];
       const allLayers = mapAny.getStyle?.()?.layers ?? [];
       for (const layer of allLayers) {
         const id = layer?.id as string;
         if (!id?.startsWith("planner-route-layer-")) continue;
-        if (id.endsWith("-points") || id.endsWith("-labels") || id.endsWith("-hit")) continue;
-        if (id.endsWith("-casing")) {
-          mapAny.setPaintProperty(id, "line-width", 4);
-          mapAny.setPaintProperty(id, "line-opacity", 0.25);
-        } else {
-          mapAny.setPaintProperty(id, "line-width", 2.5);
+        if (suffixes.some((s) => id.endsWith(s))) {
+          if (id.endsWith("-gap")) {
+            mapAny.setPaintProperty(id, "line-opacity", 0);
+          } else if (id.endsWith("-casing")) {
+            mapAny.setPaintProperty(id, "line-width", 4);
+            mapAny.setPaintProperty(id, "line-opacity", 0.25);
+          }
+          continue;
         }
+        mapAny.setPaintProperty(id, "line-width", 2.5);
+        mapAny.setPaintProperty(id, "line-opacity", 0.9);
       }
-      // Restore original casing color for previously hovered route
       if (prevHoveredCasingId && prevHoveredOriginalColor) {
         if (mapAny.getLayer?.(prevHoveredCasingId)) {
           mapAny.setPaintProperty(prevHoveredCasingId, "line-color", prevHoveredOriginalColor);
@@ -207,16 +212,13 @@ export function MapCanvas({
 
       if (hitFeature) {
         const layerId = (hitFeature.layer.id as string).replace("-hit", "");
+        const gapId = `${layerId}-gap`;
         const casingId = `${layerId}-casing`;
-        mapAny.setPaintProperty(layerId, "line-width", 3);
-        if (mapAny.getLayer?.(casingId)) {
-          // Save original color before changing to purple
-          prevHoveredCasingId = casingId;
-          prevHoveredOriginalColor = mapAny.getPaintProperty(casingId, "line-color");
-          mapAny.setPaintProperty(casingId, "line-color", "#111184");
-          mapAny.setPaintProperty(casingId, "line-width", 10);
-          mapAny.setPaintProperty(casingId, "line-opacity", 1);
-        }
+        const routeColor =
+          (hitFeature.properties?.color as string) || "#db2777";
+        prevHoveredCasingId = casingId;
+        prevHoveredOriginalColor = mapAny.getPaintProperty(casingId, "line-color");
+        applyRouteLineHover(mapAny, layerId, gapId, casingId, routeColor);
         map.getCanvas().style.cursor = "pointer";
 
         // Show Route Popup

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Map as MapTilerMap, MapStyle, config, Popup } from "@maptiler/sdk";
 import "@maptiler/sdk/dist/maptiler-sdk.css";
 import { fetchCityBoundary } from "@/lib/maptiler/geocoding";
-import { fitToBoundary } from "@/lib/maptiler/layers";
+import { getRoadRouteGeometry } from "@/lib/maptiler/routing";
+import { fitToBoundary, applyRouteLineHover } from "@/lib/maptiler/layers";
 import { fetchLocations } from "@/lib/actions";
 import { PublicPointPopup } from "./PublicPointPopup";
 import { RoutePopup } from "../planner/MapCanvas/RoutePopup";
@@ -44,6 +45,8 @@ export function PublicMapCanvas({
     // We prefix all our dynamic public route sources with "public-route-"
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapAny = map as any;
+    if (!mapAny.isStyleLoaded?.()) return;
+
     const style = map.getStyle();
     if (!style) return;
 
@@ -147,15 +150,15 @@ export function PublicMapCanvas({
       for (const layer of allLayers) {
         const id = layer?.id as string;
         if (!id?.startsWith("public-route-")) continue;
-        if (id.endsWith("-points") || id.endsWith("-labels") || id.endsWith("-hit")) continue;
-        if (id.endsWith("-casing")) {
+        if (id.endsWith("-gap")) {
+          mapAny.setPaintProperty(id, "line-opacity", 0);
+        } else if (id.endsWith("-casing")) {
           mapAny.setPaintProperty(id, "line-width", 4);
           mapAny.setPaintProperty(id, "line-opacity", 0.25);
         } else if (id.endsWith("-line")) {
           mapAny.setPaintProperty(id, "line-width", 2.5);
         }
       }
-      // Restore original casing color for previously hovered route
       if (prevHoveredCasingId && prevHoveredOriginalColor) {
         if (mapAny.getLayer?.(prevHoveredCasingId)) {
           mapAny.setPaintProperty(prevHoveredCasingId, "line-color", prevHoveredOriginalColor);
@@ -179,16 +182,13 @@ export function PublicMapCanvas({
 
       if (hitFeature) {
         const lineId = (hitFeature.layer.id as string).replace("-hit", "-line");
+        const gapId = (hitFeature.layer.id as string).replace("-hit", "-gap");
         const casingId = (hitFeature.layer.id as string).replace("-hit", "-casing");
-        mapAny.setPaintProperty(lineId, "line-width", 3);
-        if (mapAny.getLayer?.(casingId)) {
-          // Save original color before changing to dark blue
-          prevHoveredCasingId = casingId;
-          prevHoveredOriginalColor = mapAny.getPaintProperty(casingId, "line-color");
-          mapAny.setPaintProperty(casingId, "line-color", "#111184");
-          mapAny.setPaintProperty(casingId, "line-width", 10);
-          mapAny.setPaintProperty(casingId, "line-opacity", 1);
-        }
+        const routeColor =
+          (hitFeature.properties?.color as string) || "#0284c7";
+        prevHoveredCasingId = casingId;
+        prevHoveredOriginalColor = mapAny.getPaintProperty(casingId, "line-color");
+        applyRouteLineHover(mapAny, lineId, gapId, casingId, routeColor);
         map.getCanvas().style.cursor = "pointer";
 
         // Show Route Popup
@@ -272,16 +272,38 @@ export function PublicMapCanvas({
   // Handle drawing all routes and zooming to selected location
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
+
+    const activeMap = map;
+    let cancelled = false;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mapAny = map as any;
+    const mapAny = activeMap as any;
+
+    async function waitForStyle() {
+      if (mapAny.isStyleLoaded?.()) return;
+      await new Promise<void>((resolve) => {
+        const onReady = () => {
+          activeMap.off("load", onReady);
+          activeMap.off("styledata", onStyleData);
+          resolve();
+        };
+        const onStyleData = () => {
+          if (mapAny.isStyleLoaded?.()) onReady();
+        };
+        activeMap.once("load", onReady);
+        activeMap.on("styledata", onStyleData);
+      });
+    }
 
     async function loadData() {
-      if (!map) return;
+      if (cancelled) return;
+
+      await waitForStyle();
+      if (cancelled || !mapAny.isStyleLoaded?.()) return;
 
       // 1. Draw all routes from all locations
-      clearRoutes(map);
+      clearRoutes(activeMap);
 
       // ── Location markers (visible even when a location has no routes) ──
       const locSourceId = "public-locations";
@@ -339,6 +361,8 @@ export function PublicMapCanvas({
 
       for (const loc of locations) {
         for (const route of loc.routes) {
+          if (cancelled) return;
+
           // Apply route type filter — skip if active filter doesn't match
           if (activeFilter !== "All" && route.type !== activeFilter) continue;
 
@@ -349,29 +373,30 @@ export function PublicMapCanvas({
           else if (route.lineStyle === "DOTTED") dasharray = [1, 2];
           else if (route.lineStyle === "DASH-DOT") dasharray = [4, 2, 1, 2];
 
+          const sortedPoints = [...route.points].sort(
+            (a: any, b: any) => a.order - b.order,
+          );
+
           const features: any[] = [];
 
-          if (route.points.length > 1) {
+          if (sortedPoints.length > 1) {
+            const geometry = await getRoadRouteGeometry(sortedPoints);
+            if (cancelled) return;
             features.push({
               type: "Feature",
-              geometry: {
-                type: "LineString",
-                coordinates: route.points
-                  .sort((a: any, b: any) => a.order - b.order)
-                  .map((p: any) => [p.lng, p.lat]),
-              },
-              properties: { 
-                id: route.id, 
+              geometry,
+              properties: {
+                id: route.id,
                 type: "line",
                 title: route.name,
                 description: route.description,
-                color: route.color || "#0284c7"
+                color: route.color || "#0284c7",
               },
             });
           }
 
-          for (let i = 0; i < route.points.length; i++) {
-            const p = route.points[i];
+          for (let i = 0; i < sortedPoints.length; i++) {
+            const p = sortedPoints[i];
             features.push({
               type: "Feature",
               geometry: { type: "Point", coordinates: [p.lng, p.lat] },
@@ -382,7 +407,7 @@ export function PublicMapCanvas({
                 photos: JSON.stringify(p.photos || []),
                 type: "point",
                 pointType: (p as any).type || "single",
-                isEndpoint: i === 0 || i === route.points.length - 1,
+                isEndpoint: i === 0 || i === sortedPoints.length - 1,
               },
             });
           }
@@ -402,6 +427,19 @@ export function PublicMapCanvas({
               "line-color": route.color || "#0284c7",
               "line-width": 4,
               "line-opacity": 0.25,
+            },
+          });
+
+          mapAny.addLayer({
+            id: `${sourceId}-gap`,
+            type: "line",
+            source: sourceId,
+            filter: ["==", "type", "line"],
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": "#ffffff",
+              "line-width": 7,
+              "line-opacity": 0,
             },
           });
 
@@ -474,9 +512,10 @@ export function PublicMapCanvas({
       if (prevId !== selectedLocationId) {
         if (selectedLocationId) {
           const selectedLoc = locations.find((l) => l.id === selectedLocationId);
-          if (selectedLoc) {
+          if (selectedLoc?.name) {
             const boundary = await fetchCityBoundary(selectedLoc.name);
-            if (boundary && boundary.geojson && map) {
+            if (cancelled) return;
+            if (boundary?.geojson) {
               if (!mapAny.getSource(sourceId)) {
                 mapAny.addSource(sourceId, {
                   type: "geojson",
@@ -501,10 +540,11 @@ export function PublicMapCanvas({
               } else {
                 mapAny.getSource(sourceId).setData(boundary.geojson);
               }
-              fitToBoundary(map, boundary.geojson);
+              fitToBoundary(activeMap, boundary.geojson);
             }
           }
         } else {
+          if (cancelled) return;
           // Remove boundary if "All Locations" is selected
           if (mapAny.getSource(sourceId)) {
             if (mapAny.getLayer(sourceId + "-fill"))
@@ -515,12 +555,18 @@ export function PublicMapCanvas({
           }
 
           // If "All Locations" is selected, fly to a global view
-          map.flyTo({ center: [10.2, 52.75], zoom: 5 });
+          activeMap.flyTo({ center: [10.2, 52.75], zoom: 5 });
         }
       }
     }
 
-    loadData();
+    void loadData().catch((err) => {
+      if (!cancelled) console.error("Failed to load public map data:", err);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [locations, selectedLocationId, activeFilter, clearRoutes, mapReady]);
 
   return (

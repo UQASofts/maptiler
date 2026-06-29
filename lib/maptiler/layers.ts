@@ -23,6 +23,31 @@ function hasLayer(map: MapTilerMap, layerId: string) {
   return Boolean((map as any).getLayer?.(layerId));
 }
 
+/** Hover highlight: route line → white gap → colored outer border. */
+export function applyRouteLineHover(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mapAny: any,
+  mainLineLayerId: string,
+  gapLayerId: string,
+  casingLayerId: string,
+  routeColor: string,
+) {
+  if (mapAny.getLayer?.(mainLineLayerId)) {
+    mapAny.setPaintProperty(mainLineLayerId, "line-width", 3.5);
+    mapAny.setPaintProperty(mainLineLayerId, "line-opacity", 1);
+  }
+  if (mapAny.getLayer?.(gapLayerId)) {
+    mapAny.setPaintProperty(gapLayerId, "line-color", "#ffffff");
+    mapAny.setPaintProperty(gapLayerId, "line-width", 7);
+    mapAny.setPaintProperty(gapLayerId, "line-opacity", 1);
+  }
+  if (mapAny.getLayer?.(casingLayerId)) {
+    mapAny.setPaintProperty(casingLayerId, "line-color", routeColor);
+    mapAny.setPaintProperty(casingLayerId, "line-width", 12);
+    mapAny.setPaintProperty(casingLayerId, "line-opacity", 0.45);
+  }
+}
+
 export function addOrUpdateRouteLayer(map: MapTilerMap, variant: RouteVariantDef) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapAny = map as any;
@@ -66,6 +91,27 @@ export function addOrUpdateRouteLayer(map: MapTilerMap, variant: RouteVariantDef
     );
   } else {
     mapAny.setPaintProperty(casingLayerId, "line-color", variant.color);
+  }
+
+  const gapLayerId = `${layerId}-gap`;
+  if (!hasLayer(map, gapLayerId)) {
+    mapAny.addLayer(
+      {
+        id: gapLayerId,
+        type: "line",
+        source: sourceId,
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": 7,
+          "line-opacity": 0,
+        },
+      },
+      hasLayer(map, layerId) ? layerId : undefined,
+    );
   }
 
   if (!hasLayer(map, layerId)) {

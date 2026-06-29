@@ -30,6 +30,11 @@ import { DEFAULT_PLANNER_STATE } from "@/lib/planner/state";
 import type { RouteVariantDef } from "@/lib/planner/types";
 import type { RouteState } from "@/components/planner/LeftPanel/CreateRouteForm";
 import { fetchCityBoundary } from "@/lib/maptiler/geocoding";
+import {
+  buildRouteFeatures,
+  getRoadRouteGeometry,
+  toRouteWaypoints,
+} from "@/lib/maptiler/routing";
 
 export function PlannerScreen() {
   // ── Location state ───────────────────────────────────────────────────────
@@ -58,6 +63,13 @@ export function PlannerScreen() {
   const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
   const [visibleRouteIds, setVisibleRouteIds] = useState<Set<string>>(new Set());
   const [loadedRoutes, setLoadedRoutes] = useState<Record<string, RouteVariantDef>>({});
+  const [draftRouteGeometry, setDraftRouteGeometry] =
+    useState<GeoJSON.LineString | null>(null);
+
+  const draftPointsKey = useMemo(
+    () => draftRoute?.points.map((p) => `${p.lat},${p.lng}`).join("|") ?? "",
+    [draftRoute?.points],
+  );
 
   // ── City boundary state ──────────────────────────────────────────────────
   const [cityBoundaryGeojson, setCityBoundaryGeojson] =
@@ -82,6 +94,23 @@ export function PlannerScreen() {
     return variants;
   }, [locations]);
 
+  // ── Road-snapped geometry for draft route preview ────────────────────────
+  useEffect(() => {
+    if (!draftRoute || draftRoute.points.length < 2) {
+      setDraftRouteGeometry(null);
+      return;
+    }
+
+    let cancelled = false;
+    getRoadRouteGeometry(draftRoute.points).then((geometry) => {
+      if (!cancelled) setDraftRouteGeometry(geometry);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftPointsKey, draftRoute]);
+
   // ── Active variant for map rendering ─────────────────────────────────────
   const activeVariantsToRender = useMemo<RouteVariantDef[]>(() => {
     if ((view === "create-route" || view === "edit-route") && draftRoute) {
@@ -99,13 +128,10 @@ export function PlannerScreen() {
           },
         });
       });
-      if (draftRoute.points.length >= 2) {
+      if (draftRoute.points.length >= 2 && draftRouteGeometry) {
         features.push({
           type: "Feature",
-          geometry: {
-            type: "LineString",
-            coordinates: draftRoute.points.map((p) => [p.lng, p.lat]),
-          },
+          geometry: draftRouteGeometry,
           properties: {
             title: draftRoute.name || "Draft Route",
             description: draftRoute.description,
@@ -139,7 +165,7 @@ export function PlannerScreen() {
       }
     }
     return out;
-  }, [view, draftRoute, visibleRouteIds, loadedRoutes, editingRouteId]);
+  }, [view, draftRoute, draftRouteGeometry, visibleRouteIds, loadedRoutes, editingRouteId]);
 
   // ── Load locations from DB on mount ──────────────────────────────────────
   useEffect(() => {
@@ -182,37 +208,15 @@ export function PlannerScreen() {
         const dbRoute = await fetchRoute(route.id);
         if (!dbRoute) continue;
         
-        const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
-        for (let i = 0; i < dbRoute.points.length; i++) {
-          const p = dbRoute.points[i];
-          features.push({
-            type: "Feature",
-            geometry: { type: "Point", coordinates: [p.lng, p.lat] },
-            properties: {
-              label: p.label,
-              notes: p.notes,
-              photos: p.photos ? JSON.stringify(p.photos) : undefined,
-              pointType: (p as any).type || "single",
-              isEndpoint: i === 0 || i === dbRoute.points.length - 1,
-            },
-          });
-        }
+        const features = await buildRouteFeatures(
+          toRouteWaypoints(dbRoute.points),
+          {
+            title: dbRoute.name,
+            description: dbRoute.description,
+            color: dbRoute.color,
+          },
+        );
 
-        if (dbRoute.points.length >= 2) {
-          features.push({
-            type: "Feature",
-            geometry: {
-              type: "LineString",
-              coordinates: dbRoute.points.map((p: { lng: number; lat: number }) => [p.lng, p.lat]),
-            },
-            properties: {
-              title: dbRoute.name,
-              description: dbRoute.description,
-              color: dbRoute.color,
-            },
-          });
-        }
-        
         newLoadedRoutes[route.id] = {
           id: route.id,
           group: "preferred",
@@ -302,36 +306,14 @@ export function PlannerScreen() {
           points: route.points.map((p, i) => ({ ...p, order: i })),
         });
 
-        // Build variant from saved route so it appears on map immediately
-        const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
-        for (let i = 0; i < newDbRoute.points.length; i++) {
-          const p = newDbRoute.points[i];
-          features.push({
-            type: "Feature",
-            geometry: { type: "Point", coordinates: [p.lng, p.lat] },
-            properties: {
-              label: p.label,
-              notes: p.notes,
-              photos: (p as any).photos ? JSON.stringify((p as any).photos) : undefined,
-              pointType: (p as any).type || "single",
-              isEndpoint: i === 0 || i === newDbRoute.points.length - 1,
-            },
-          });
-        }
-        if (newDbRoute.points.length >= 2) {
-          features.push({
-            type: "Feature",
-            geometry: {
-              type: "LineString",
-              coordinates: newDbRoute.points.map((p: { lng: number; lat: number }) => [p.lng, p.lat]),
-            },
-            properties: {
-              title: newDbRoute.name,
-              description: newDbRoute.description,
-              color: newDbRoute.color,
-            },
-          });
-        }
+        const features = await buildRouteFeatures(
+          toRouteWaypoints(newDbRoute.points),
+          {
+            title: newDbRoute.name,
+            description: newDbRoute.description,
+            color: newDbRoute.color,
+          },
+        );
         const variant: RouteVariantDef = {
           id: newDbRoute.id,
           group: "preferred",
@@ -374,41 +356,17 @@ export function PlannerScreen() {
 
         const dbLocations = await fetchLocations();
         setLocations(dbLocations.map(mapDbLocation));
-        
-        // update loaded map variants immediately if visible
+
+        const features = await buildRouteFeatures(route.points, {
+          title: route.name,
+          description: route.description,
+          color: route.color,
+        });
+
         setLoadedRoutes((prev) => {
           const current = prev[editingRouteId];
           if (!current) return prev;
-          
-          const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
-          route.points.forEach((p, idx) => {
-            features.push({
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [p.lng, p.lat] },
-              properties: {
-                label: p.label,
-                notes: p.notes,
-                photos: p.photos ? JSON.stringify(p.photos) : undefined,
-                pointType: (p as any).type || "single",
-                isEndpoint: idx === 0 || idx === route.points.length - 1,
-              },
-            });
-          });
-          if (route.points.length >= 2) {
-            features.push({
-              type: "Feature",
-              geometry: {
-                type: "LineString",
-                coordinates: route.points.map((p) => [p.lng, p.lat]),
-              },
-              properties: {
-                title: route.name,
-                description: route.description,
-                color: route.color,
-              },
-            });
-          }
-          
+
           return {
             ...prev,
             [editingRouteId]: {
@@ -418,7 +376,7 @@ export function PlannerScreen() {
               color: route.color,
               lineStyle: route.lineStyle,
               geojson: { type: "FeatureCollection", features },
-            }
+            },
           };
         });
         
