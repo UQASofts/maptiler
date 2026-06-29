@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Map as MapTilerMap, MapStyle, config, Popup } from "@maptiler/sdk";
 import "@maptiler/sdk/dist/maptiler-sdk.css";
 import { fetchCityBoundary } from "@/lib/maptiler/geocoding";
+import { getRoadRouteGeometry } from "@/lib/maptiler/routing";
 import { fitToBoundary, applyRouteLineHover } from "@/lib/maptiler/layers";
 import { fetchLocations } from "@/lib/actions";
 import { PublicPointPopup } from "./PublicPointPopup";
@@ -422,12 +423,11 @@ export function PublicMapCanvas({
           const features: any[] = [];
 
           if (sortedPoints.length > 1) {
+            const geometry = await getRoadRouteGeometry(sortedPoints);
+            if (cancelled) return;
             features.push({
               type: "Feature",
-              geometry: {
-                type: "LineString",
-                coordinates: sortedPoints.map((p) => [p.lng, p.lat]),
-              },
+              geometry,
               properties: {
                 id: route.id,
                 type: "line",
