@@ -32,7 +32,6 @@ import type { RouteState } from "@/components/planner/LeftPanel/CreateRouteForm"
 import { fetchCityBoundary } from "@/lib/maptiler/geocoding";
 import {
   buildRouteFeatures,
-  getRoadRouteGeometry,
   toRouteWaypoints,
 } from "@/lib/maptiler/routing";
 
@@ -63,13 +62,6 @@ export function PlannerScreen() {
   const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
   const [visibleRouteIds, setVisibleRouteIds] = useState<Set<string>>(new Set());
   const [loadedRoutes, setLoadedRoutes] = useState<Record<string, RouteVariantDef>>({});
-  const [draftRouteGeometry, setDraftRouteGeometry] =
-    useState<GeoJSON.LineString | null>(null);
-
-  const draftPointsKey = useMemo(
-    () => draftRoute?.points.map((p) => `${p.lat},${p.lng}`).join("|") ?? "",
-    [draftRoute?.points],
-  );
 
   // ── City boundary state ──────────────────────────────────────────────────
   const [cityBoundaryGeojson, setCityBoundaryGeojson] =
@@ -94,23 +86,6 @@ export function PlannerScreen() {
     return variants;
   }, [locations]);
 
-  // ── Road-snapped geometry for draft route preview ────────────────────────
-  useEffect(() => {
-    if (!draftRoute || draftRoute.points.length < 2) {
-      setDraftRouteGeometry(null);
-      return;
-    }
-
-    let cancelled = false;
-    getRoadRouteGeometry(draftRoute.points).then((geometry) => {
-      if (!cancelled) setDraftRouteGeometry(geometry);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [draftPointsKey, draftRoute]);
-
   // ── Active variant for map rendering ─────────────────────────────────────
   const activeVariantsToRender = useMemo<RouteVariantDef[]>(() => {
     if ((view === "create-route" || view === "edit-route") && draftRoute) {
@@ -128,10 +103,13 @@ export function PlannerScreen() {
           },
         });
       });
-      if (draftRoute.points.length >= 2 && draftRouteGeometry) {
+      if (draftRoute.points.length >= 2) {
         features.push({
           type: "Feature",
-          geometry: draftRouteGeometry,
+          geometry: {
+            type: "LineString",
+            coordinates: draftRoute.points.map((p) => [p.lng, p.lat]),
+          },
           properties: {
             title: draftRoute.name || "Draft Route",
             description: draftRoute.description,
@@ -165,7 +143,7 @@ export function PlannerScreen() {
       }
     }
     return out;
-  }, [view, draftRoute, draftRouteGeometry, visibleRouteIds, loadedRoutes, editingRouteId]);
+  }, [view, draftRoute, visibleRouteIds, loadedRoutes, editingRouteId]);
 
   // ── Load locations from DB on mount ──────────────────────────────────────
   useEffect(() => {
@@ -208,7 +186,7 @@ export function PlannerScreen() {
         const dbRoute = await fetchRoute(route.id);
         if (!dbRoute) continue;
         
-        const features = await buildRouteFeatures(
+        const features = buildRouteFeatures(
           toRouteWaypoints(dbRoute.points),
           {
             title: dbRoute.name,
@@ -306,7 +284,7 @@ export function PlannerScreen() {
           points: route.points.map((p, i) => ({ ...p, order: i })),
         });
 
-        const features = await buildRouteFeatures(
+        const features = buildRouteFeatures(
           toRouteWaypoints(newDbRoute.points),
           {
             title: newDbRoute.name,
@@ -357,7 +335,7 @@ export function PlannerScreen() {
         const dbLocations = await fetchLocations();
         setLocations(dbLocations.map(mapDbLocation));
 
-        const features = await buildRouteFeatures(route.points, {
+        const features = buildRouteFeatures(route.points, {
           title: route.name,
           description: route.description,
           color: route.color,

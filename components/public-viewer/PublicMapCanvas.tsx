@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Map as MapTilerMap, MapStyle, config, Popup } from "@maptiler/sdk";
 import "@maptiler/sdk/dist/maptiler-sdk.css";
 import { fetchCityBoundary } from "@/lib/maptiler/geocoding";
-import { getRoadRouteGeometry } from "@/lib/maptiler/routing";
 import { fitToBoundary, applyRouteLineHover } from "@/lib/maptiler/layers";
 import { fetchLocations } from "@/lib/actions";
 import { PublicPointPopup } from "./PublicPointPopup";
@@ -12,6 +11,18 @@ import { RoutePopup } from "../planner/MapCanvas/RoutePopup";
 import { createRoot } from "react-dom/client";
 
 const API_KEY = process.env.NEXT_PUBLIC_MAPTILER_API_KEY || "";
+
+function getClickableLayerIds(map: MapTilerMap): string[] {
+  const layers = map.getStyle()?.layers ?? [];
+  return layers
+    .filter((l) => l.id.endsWith("-points") || l.id.endsWith("-circles"))
+    .map((l) => l.id);
+}
+
+function isMapStyleReady(map: MapTilerMap): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return Boolean((map as any).isStyleLoaded?.() && map.getStyle()?.layers);
+}
 
 type LocationWithRoutes = Awaited<ReturnType<typeof fetchLocations>>[number];
 
@@ -31,10 +42,15 @@ export function PublicMapCanvas({
   const [baseStyle, setBaseStyle] = useState<"streets" | "satellite">(
     "streets",
   );
+  const style =
+    baseStyle === "satellite"
+      ? MapStyle.SATELLITE
+      : "https://api.maptiler.com/maps/base-v4/style.json";
   const [mapReady, setMapReady] = useState(false);
   const popupRef = useRef<Popup | null>(null);
   const routePopupRef = useRef<Popup | null>(null);
   const prevSelectedIdRef = useRef<string | null>(null);
+  const isFirstStyleRef = useRef(true);
 
   // Set API key once
   useEffect(() => {
@@ -70,7 +86,7 @@ export function PublicMapCanvas({
 
     const map = new MapTilerMap({
       container: containerRef.current,
-      style: baseStyle === "satellite" ? MapStyle.SATELLITE : "https://api.maptiler.com/maps/base-v4/style.json",
+      style,
       center: [10.2, 52.75],
       zoom: 9,
       hash: false,
@@ -84,12 +100,11 @@ export function PublicMapCanvas({
 
     // Handle clicks for popups (route points + location markers)
     map.on("click", (e) => {
-      const clickableLayers = map
-        .getStyle()
-        .layers.filter(
-          (l) => l.id.endsWith("-points") || l.id.endsWith("-circles"),
-        )
-        .map((l) => l.id);
+      if (!isMapStyleReady(map)) return;
+
+      const clickableLayers = getClickableLayerIds(map);
+      if (!clickableLayers.length) return;
+
       const features = map.queryRenderedFeatures(e.point, {
         layers: clickableLayers,
       });
@@ -145,6 +160,8 @@ export function PublicMapCanvas({
     let prevHoveredOriginalColor: string | null = null;
 
     function resetRouteWidths() {
+      if (!isMapStyleReady(map)) return;
+
       const mapAny = map as any;
       const allLayers = mapAny.getStyle?.()?.layers ?? [];
       for (const layer of allLayers) {
@@ -170,6 +187,8 @@ export function PublicMapCanvas({
 
     // Cursor styling + route hover (dynamic layer IDs)
     const handleMouseMove = (e: any) => {
+      if (!isMapStyleReady(map)) return;
+
       const mapAny = map as any;
       resetRouteWidths();
 
@@ -225,12 +244,12 @@ export function PublicMapCanvas({
       }
 
       // Point / circle cursor styling
-      const clickableLayers = map
-        .getStyle()
-        .layers.filter(
-          (l) => l.id.endsWith("-points") || l.id.endsWith("-circles"),
-        )
-        .map((l) => l.id);
+      const clickableLayers = getClickableLayerIds(map);
+      if (!clickableLayers.length) {
+        map.getCanvas().style.cursor = "";
+        return;
+      }
+
       const features = map.queryRenderedFeatures(e.point, {
         layers: clickableLayers,
       });
@@ -267,7 +286,28 @@ export function PublicMapCanvas({
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [baseStyle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Toggle streets / satellite without recreating the map
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (isFirstStyleRef.current) {
+      isFirstStyleRef.current = false;
+      return;
+    }
+
+    setMapReady(false);
+    const onStyleLoad = () => setMapReady(true);
+    map.once("style.load", onStyleLoad);
+    map.setStyle(style);
+
+    return () => {
+      map.off("style.load", onStyleLoad);
+    };
+  }, [style]);
 
   // Handle drawing all routes and zooming to selected location
   useEffect(() => {
@@ -307,7 +347,9 @@ export function PublicMapCanvas({
 
       // ── Location markers (visible even when a location has no routes) ──
       const locSourceId = "public-locations";
-      const locFeatures = locations.map((loc) => ({
+      const locFeatures = locations
+        .filter((loc): loc is LocationWithRoutes => Boolean(loc?.name))
+        .map((loc) => ({
         type: "Feature" as const,
         geometry: { type: "Point" as const, coordinates: [loc.lng, loc.lat] },
         properties: {
@@ -380,11 +422,12 @@ export function PublicMapCanvas({
           const features: any[] = [];
 
           if (sortedPoints.length > 1) {
-            const geometry = await getRoadRouteGeometry(sortedPoints);
-            if (cancelled) return;
             features.push({
               type: "Feature",
-              geometry,
+              geometry: {
+                type: "LineString",
+                coordinates: sortedPoints.map((p) => [p.lng, p.lat]),
+              },
               properties: {
                 id: route.id,
                 type: "line",
