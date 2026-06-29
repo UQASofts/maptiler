@@ -1,7 +1,5 @@
 "use server";
 
-import fs from "fs/promises";
-import path from "path";
 import { auth } from "@clerk/nextjs/server";
 
 import {
@@ -171,15 +169,6 @@ export async function uploadRoutePhoto(formData: FormData) {
   const file = formData.get("photo") as File | null;
   if (!file) throw new Error("No file uploaded");
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const ext = file.name.split(".").pop() || "jpg";
-  const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
-
-  const uploadDir = path.join(process.cwd(), "public", "uploads");
-  await fs.mkdir(uploadDir, { recursive: true });
-
-  const filepath = path.join(uploadDir, filename);
-  await fs.writeFile(filepath, buffer);
-
-  return `/uploads/${filename}`;
+  const { saveRoutePhoto } = await import("@/lib/upload-route-photo");
+  return saveRoutePhoto(file);
 }
