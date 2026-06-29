@@ -72,6 +72,7 @@ function AddPointPanel({
   const [notes, setNotes] = useState("");
   const [singlePhotos, setSinglePhotos] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [addDetails, setAddDetails] = useState(false);
   const [bulkText, setBulkText] = useState("");
@@ -211,12 +212,11 @@ function AddPointPanel({
 
     try {
       setIsUploading(true);
-      const formData = new FormData();
-      formData.append("photo", file);
-      // We dynamically import to avoid running on client before hydration if not needed,
-      // but since it's a server action, it works directly.
-      const { uploadRoutePhoto } = await import("@/lib/actions");
-      const url = await uploadRoutePhoto(formData);
+      setUploadError(null);
+      const { uploadRoutePhotoFromBrowser } = await import(
+        "@/lib/upload-route-photo-client"
+      );
+      const url = await uploadRoutePhotoFromBrowser(file);
       if (target === "single") {
         setSinglePhotos((prev) => [...prev, url]);
       } else if (target === "start") {
@@ -226,6 +226,9 @@ function AddPointPanel({
       }
     } catch (error) {
       console.error("Upload failed:", error);
+      setUploadError(
+        error instanceof Error ? error.message : "Failed to upload image.",
+      );
     } finally {
       setIsUploading(false);
     }
@@ -398,6 +401,12 @@ function AddPointPanel({
                 />
               </div>
             </div>
+
+            {uploadError && (
+              <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+                {uploadError}
+              </p>
+            )}
 
             {/* Site Photos */}
             <div className="mb-6">

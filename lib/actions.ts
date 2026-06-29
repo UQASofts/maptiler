@@ -165,10 +165,10 @@ export async function updateRoutePoint(id: string, data: Partial<{ label: string
 }
 
 export async function uploadRoutePhoto(formData: FormData) {
-  // await requireAdmin();
   const file = formData.get("photo") as File | null;
   if (!file) throw new Error("No file uploaded");
 
-  const { saveRoutePhoto } = await import("@/lib/upload-route-photo");
-  return saveRoutePhoto(file);
+  throw new Error(
+    "Use uploadRoutePhotoFromBrowser() for image uploads. Server Actions cannot store files on Vercel.",
+  );
 }
