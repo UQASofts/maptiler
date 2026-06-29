@@ -49,10 +49,19 @@ async function uploadToVercelBlob(
   buffer: Buffer,
   contentType: string,
 ): Promise<string> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  if (!token) {
+    throw new Error(
+      "BLOB_READ_WRITE_TOKEN is not set. Connect a Blob store in Vercel → Storage, then redeploy.",
+    );
+  }
+
+  // Pass token explicitly so OIDC + BLOB_STORE_ID does not override it.
   const blob = await put(filename, buffer, {
     access: "public",
     contentType,
     addRandomSuffix: true,
+    token,
   });
   return blob.url;
 }
