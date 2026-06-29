@@ -61,13 +61,6 @@ function isRunningOnVercel(): boolean {
   return process.env.VERCEL === "1";
 }
 
-function hasBlobStorageConfigured(): boolean {
-  return Boolean(
-    process.env.BLOB_READ_WRITE_TOKEN ||
-      process.env.BLOB_STORE_ID ||
-      isRunningOnVercel(),
-  );
-}
 
 export async function saveRoutePhoto(file: File): Promise<string> {
   const contentType = resolveContentType(file);
@@ -82,13 +75,13 @@ export async function saveRoutePhoto(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
   const filename = buildFilename(file.name);
 
-  if (isRunningOnVercel()) {
-    if (!hasBlobStorageConfigured()) {
-      throw new Error(
-        "Image upload is not configured. Add a Vercel Blob store to this project.",
-      );
-    }
+  if (isRunningOnVercel() && !process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error(
+      "BLOB_READ_WRITE_TOKEN is missing. In Vercel: Storage → Blob → Create store → Connect to this project → Redeploy.",
+    );
+  }
 
+  if (isRunningOnVercel() || process.env.BLOB_READ_WRITE_TOKEN) {
     try {
       return await uploadToVercelBlob(filename, buffer, contentType);
     } catch (error) {
@@ -97,17 +90,6 @@ export async function saveRoutePhoto(file: File): Promise<string> {
         error instanceof Error
           ? error.message
           : "Image upload failed on Vercel Blob.",
-      );
-    }
-  }
-
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    try {
-      return await uploadToVercelBlob(filename, buffer, contentType);
-    } catch (error) {
-      console.warn(
-        "[saveRoutePhoto] Blob upload failed, falling back to local disk:",
-        error,
       );
     }
   }
