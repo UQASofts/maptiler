@@ -2,8 +2,7 @@
 
 export function WebGLUnsupportedNotice({ message }: { message: string }) {
   return (
-
-    
+    // comment
     <div className="flex h-full min-h-[240px] w-full flex-col items-center justify-center gap-3 bg-zinc-100 p-6 text-center">
       <p className="text-sm font-semibold text-zinc-900">Map cannot be displayed</p>
       <p className="max-w-md text-sm text-zinc-600">{message}</p>
